@@ -1,0 +1,21 @@
+[bot]
+endpoint = "wss://game.riichi.dev/ws/validate"
+token_env = "RIICHI_BOT_TOKEN"
+
+[data]
+raw_dir = "data/raw"
+processed_dir = "data/processed"
+
+[model]
+artifact_path = "models/policy.pt"
+
+[training]
+batch_size = 512
+epochs = 5
+device = "auto"
+learning_rate = 0.001
+hidden_size = 512
+
+[evaluation]
+games = 100
+timeout_seconds = 3.0

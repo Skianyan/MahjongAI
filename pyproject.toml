@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mahjong-ai"
+version = "0.1.0"
+description = "Riichi Mahjong AI training and RiichiLabs bot scaffold."
+requires-python = ">=3.11"
+dependencies = [
+    "riichienv>=0.4.8",
+    "websockets>=15.0",
+]
+
+[project.optional-dependencies]
+train = [
+    "numpy>=2.0",
+    "torch>=2.0",
+    "tqdm>=4.66",
+]
+
+[project.scripts]
+mahjong-ai-bot = "mahjong_ai.bot_runner:main"
+mahjong-ai-train = "mahjong_ai.training.train:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
