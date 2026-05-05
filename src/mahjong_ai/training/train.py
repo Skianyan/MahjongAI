@@ -130,7 +130,7 @@ def train_mlp_baseline(options: TrainOptions) -> TrainingResult:
                     break
 
                 encoded = example.encoded_decision(self.vocabulary, extended=self.options.extended)
-                features = torch.frombuffer(encoded.features.data, dtype=torch.float32).clone()
+                features = torch.frombuffer(bytearray(encoded.features.data), dtype=torch.float32)
                 features = features.reshape(encoded.features.shape)
                 legal_mask = torch.tensor(encoded.legal_actions.mask, dtype=torch.bool)
                 label = torch.tensor(encoded.require_label(), dtype=torch.long)
