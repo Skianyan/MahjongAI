@@ -15,6 +15,12 @@ epochs = 5
 device = "auto"
 learning_rate = 0.001
 hidden_size = 512
+model_arch = "mlp"
+validation_ratio = 0.1
+seed = 7
+num_workers = 0
+early_stopping_patience = 3
+action_type_weight_power = 0.5
 
 [evaluation]
 games = 100

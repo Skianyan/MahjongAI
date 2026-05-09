@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: mahjong-ai
+Version: 0.1.0
+Summary: Riichi Mahjong AI training and RiichiLabs bot scaffold.
+Requires-Python: >=3.11
+Requires-Dist: riichienv>=0.4.8
+Requires-Dist: websockets>=15.0
+Provides-Extra: train
+Requires-Dist: numpy>=2.0; extra == "train"
+Requires-Dist: torch>=2.0; extra == "train"
+Requires-Dist: tqdm>=4.66; extra == "train"

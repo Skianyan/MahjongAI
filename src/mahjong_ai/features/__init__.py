@@ -1,6 +1,11 @@
 """Feature encoding utilities."""
 
-from mahjong_ai.features.actions import ActionSpec, ActionVocabulary, LegalActionMask
+from mahjong_ai.features.actions import (
+    ActionSpec,
+    ActionVocabulary,
+    LegalActionMask,
+    UnknownActionError,
+)
 from mahjong_ai.features.encoding import (
     BASE_OBSERVATION_SHAPE,
     EXTENDED_OBSERVATION_SHAPE,
@@ -19,6 +24,7 @@ __all__ = [
     "EncodedDecision",
     "LegalActionMask",
     "ObservationFeatures",
+    "UnknownActionError",
     "encode_decision",
     "encode_observation",
     "encode_observation_bytes",

@@ -21,7 +21,7 @@ ACTION_TYPE_NAMES: dict[int, str] = {
     int(ActionType.PASS): "PASS",
     int(ActionType.ANKAN): "ANKAN",
     int(ActionType.KAKAN): "KAKAN",
-    int(ActionType.KYUSHU_KYUHAI): "KYUSHU_KYUHAI",
+    int(ActionType.KYUSHU_KYUHAI): "KYUSHU_KYUHAI", # 9 terminals rule
     int(ActionType.KITA): "KITA",
 }
 ACTION_TYPES_BY_ID: dict[int, ActionType] = {
@@ -209,6 +209,16 @@ class ActionVocabulary:
             legal_indices=tuple(legal_indices),
             unknown_actions=tuple(unknown_actions),
         )
+
+    def coverage_for(self, observation: Observation) -> dict[str, int]:
+        """Return known/unknown legal action coverage for one observation."""
+        legal_mask = self.mask_for(observation, add_missing=False)
+        total_legal = len(legal_mask.legal_indices) + len(legal_mask.unknown_actions)
+        return {
+            "total_legal_actions": total_legal,
+            "known_legal_actions": len(legal_mask.legal_indices),
+            "unknown_legal_actions": len(legal_mask.unknown_actions),
+        }
 
     def find_legal_action(self, observation: Observation, action_id: int) -> Action | None:
         """Return the matching legal action for *action_id*, if currently available."""

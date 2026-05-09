@@ -15,6 +15,7 @@ class PolicyModelConfig:
 
     input_shape: tuple[int, int]
     action_count: int
+    model_arch: str = "mlp"
     hidden_size: int = 512
 
     @property
@@ -26,6 +27,7 @@ class PolicyModelConfig:
             "input_shape": list(self.input_shape),
             "input_size": self.input_size,
             "action_count": self.action_count,
+            "model_arch": self.model_arch,
             "hidden_size": self.hidden_size,
         }
 
@@ -38,6 +40,7 @@ class PolicyModelConfig:
         return cls(
             input_shape=(int(input_shape[0]), int(input_shape[1])),
             action_count=int(data["action_count"]),
+            model_arch=str(data.get("model_arch", "mlp")),
             hidden_size=int(data.get("hidden_size", 512)),
         )
 
@@ -59,6 +62,37 @@ class MLPPolicy(nn.Module):
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
         return self.network(features)
+
+
+class ConvPolicy(nn.Module):
+    """Convolutional policy over observation planes."""
+
+    def __init__(self, config: PolicyModelConfig) -> None:
+        super().__init__()
+        channel_count, tile_count = config.input_shape
+        self.config = config
+        self.network = nn.Sequential(
+            nn.Conv1d(channel_count, config.hidden_size, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(config.hidden_size, config.hidden_size, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(config.hidden_size * tile_count, config.hidden_size),
+            nn.ReLU(),
+            nn.Linear(config.hidden_size, config.action_count),
+        )
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        return self.network(features)
+
+
+def build_policy_model(config: PolicyModelConfig) -> nn.Module:
+    """Instantiate the configured policy architecture."""
+    if config.model_arch == "conv":
+        return ConvPolicy(config)
+    if config.model_arch == "mlp":
+        return MLPPolicy(config)
+    raise ValueError(f"Unsupported model_arch: {config.model_arch}")
 
 
 def mask_illegal_logits(logits: torch.Tensor, legal_mask: torch.Tensor) -> torch.Tensor:

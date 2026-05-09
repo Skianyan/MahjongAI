@@ -1,0 +1,7 @@
+riichienv>=0.4.8
+websockets>=15.0
+
+[train]
+numpy>=2.0
+torch>=2.0
+tqdm>=4.66

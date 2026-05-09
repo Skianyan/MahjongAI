@@ -36,6 +36,12 @@ class TrainingConfig:
     device: str
     learning_rate: float = 1e-3
     hidden_size: int = 512
+    model_arch: str = "mlp"
+    validation_ratio: float = 0.0
+    seed: int = 7
+    num_workers: int = 0
+    early_stopping_patience: int | None = None
+    action_type_weight_power: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -66,7 +72,23 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             processed_dir=Path(_section(data, "data")["processed_dir"]),
         ),
         model=ModelConfig(artifact_path=Path(_section(data, "model")["artifact_path"])),
-        training=TrainingConfig(**_section(data, "training")),
+        training=TrainingConfig(
+            batch_size=int(_section(data, "training")["batch_size"]),
+            epochs=int(_section(data, "training")["epochs"]),
+            device=str(_section(data, "training")["device"]),
+            learning_rate=float(_section(data, "training").get("learning_rate", 1e-3)),
+            hidden_size=int(_section(data, "training").get("hidden_size", 512)),
+            model_arch=str(_section(data, "training").get("model_arch", "mlp")),
+            validation_ratio=float(_section(data, "training").get("validation_ratio", 0.0)),
+            seed=int(_section(data, "training").get("seed", 7)),
+            num_workers=int(_section(data, "training").get("num_workers", 0)),
+            early_stopping_patience=_optional_int(
+                _section(data, "training").get("early_stopping_patience")
+            ),
+            action_type_weight_power=float(
+                _section(data, "training").get("action_type_weight_power", 0.0)
+            ),
+        ),
         evaluation=EvaluationConfig(**_section(data, "evaluation")),
     )
 
@@ -94,3 +116,9 @@ def _section(data: dict[str, Any], name: str) -> dict[str, Any]:
     if not isinstance(section, dict):
         raise ValueError(f"Missing [{name}] section in config")
     return section
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    return int(value)
