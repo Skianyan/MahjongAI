@@ -8,6 +8,8 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 
+from mahjong_ai.features.tiles import N_TILE_TYPES
+
 
 @dataclass(frozen=True, slots=True)
 class PolicyModelConfig:
@@ -100,3 +102,76 @@ def mask_illegal_logits(logits: torch.Tensor, legal_mask: torch.Tensor) -> torch
     if logits.shape != legal_mask.shape:
         raise ValueError(f"Expected legal mask shape {tuple(logits.shape)}, got {tuple(legal_mask.shape)}")
     return logits.masked_fill(~legal_mask, -1e9)
+
+
+@dataclass(frozen=True, slots=True)
+class DiscardPolicyConfig:
+    """Architecture settings for the 34-type discard specialist head."""
+
+    input_shape: tuple[int, int]
+    tile_type_count: int = N_TILE_TYPES
+    model_arch: str = "mlp"
+    hidden_size: int = 512
+
+    @property
+    def input_size(self) -> int:
+        return self.input_shape[0] * self.input_shape[1]
+
+    def to_mapping(self) -> dict[str, int | list[int]]:
+        return {
+            "input_shape": list(self.input_shape),
+            "input_size": self.input_size,
+            "tile_type_count": self.tile_type_count,
+            "model_arch": self.model_arch,
+            "hidden_size": self.hidden_size,
+        }
+
+    @classmethod
+    def from_mapping(cls, data: dict[str, object]) -> DiscardPolicyConfig:
+        input_shape = data.get("input_shape")
+        if not isinstance(input_shape, Sequence) or len(input_shape) != 2:
+            raise ValueError("Discard policy config must include a 2D input_shape")
+        return cls(
+            input_shape=(int(input_shape[0]), int(input_shape[1])),
+            tile_type_count=int(data.get("tile_type_count", N_TILE_TYPES)),
+            model_arch=str(data.get("model_arch", "mlp")),
+            hidden_size=int(data.get("hidden_size", 512)),
+        )
+
+
+class DiscardPolicy(nn.Module):
+    """Predict discard over 34 tile types; legal mask applied at train/infer time."""
+
+    def __init__(self, config: DiscardPolicyConfig) -> None:
+        super().__init__()
+        self.config = config
+        if config.model_arch == "conv":
+            channel_count, tile_count = config.input_shape
+            self.network = nn.Sequential(
+                nn.Conv1d(channel_count, config.hidden_size, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.Conv1d(config.hidden_size, config.hidden_size, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.Flatten(),
+                nn.Linear(config.hidden_size * tile_count, config.hidden_size),
+                nn.ReLU(),
+                nn.Linear(config.hidden_size, config.tile_type_count),
+            )
+        elif config.model_arch == "mlp":
+            self.network = nn.Sequential(
+                nn.Flatten(),
+                nn.Linear(config.input_size, config.hidden_size),
+                nn.ReLU(),
+                nn.Linear(config.hidden_size, config.hidden_size),
+                nn.ReLU(),
+                nn.Linear(config.hidden_size, config.tile_type_count),
+            )
+        else:
+            raise ValueError(f"Unsupported model_arch: {config.model_arch}")
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        return self.network(features)
+
+
+def build_discard_policy(config: DiscardPolicyConfig) -> nn.Module:
+    return DiscardPolicy(config)

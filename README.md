@@ -116,6 +116,20 @@ mahjong-ai-train \
 
 Each training run writes the checkpoint to the selected output path and a metrics sidecar file with the suffix `.metrics.json`.
 
+**Discard-focused pure IL baseline** (extended conv net, no action-type down-weighting for discards):
+
+```bash
+bash scripts/train_allyears_v4.sh models/allyears_v4_no_discard_downweight.pt
+```
+
+Optional flags:
+
+- `--action-type-weight-power 0` — default in `config/default.toml`; keeps discard examples at full CE weight
+- `--example-weighting` — up-weight decisions from seats that finished the replay with higher scores
+- `--train-discard-head` — trains a global policy plus a 34-type discard specialist (`policy_with_discard_head` checkpoint)
+
+Offline evaluation reports bad-discard diagnostics (red-five rate, pair breaks, shanten regressions) under `discard_metrics`. Ranked runs log per-game `agent_stats` (fallback rate). Use `--fail-on-fallback` on local eval to catch checkpoint/vocabulary mismatches.
+
 ### Reinforcement learning (REINFORCE)
 
 After training a supervised `policy_network` checkpoint, you can warm-start **REINFORCE** rollouts in `RiichiEnv` (terminal reward from rank or final score). Hyper-parameters live under `[rl_training]` in `config/default.toml`.

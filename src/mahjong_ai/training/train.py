@@ -19,7 +19,12 @@ from mahjong_ai.data import (
     split_replay_paths,
 )
 from mahjong_ai.features import ActionVocabulary, UnknownActionError
-from mahjong_ai.features.encoding import BASE_OBSERVATION_SHAPE, EXTENDED_OBSERVATION_SHAPE
+from mahjong_ai.features.encoding import (
+    BASE_OBSERVATION_SHAPE,
+    EXTENDED_OBSERVATION_SHAPE,
+    encode_observation,
+)
+from riichienv import ActionType
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +50,8 @@ class TrainOptions:
     num_workers: int = 0
     early_stopping_patience: int | None = None
     action_type_weight_power: float = 0.0
+    example_weighting: bool = False
+    train_discard_head: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +70,8 @@ def train_baseline(options: TrainOptions) -> TrainingResult:
     model_type = _resolve_model_type(options.model_type)
     if model_type == "action-prior":
         return train_action_prior_baseline(options)
+    if options.train_discard_head:
+        return train_policy_with_discard_head(options)
     return train_policy_network(options)
 
 
@@ -196,18 +205,18 @@ def train_policy_network(options: TrainOptions) -> TrainingResult:
                 features = features.reshape(encoded.features.shape)
                 legal_mask = torch.tensor(encoded.legal_actions.mask, dtype=torch.bool)
                 label = torch.tensor(encoded.require_label(), dtype=torch.long)
-                yield features, legal_mask, label
+                weight = torch.tensor(example.weight, dtype=torch.float32)
+                yield features, legal_mask, label, weight
 
     train_dataset = SupervisedDecisionDataset(train_paths, options, vocabulary)
     validation_dataset = (
         SupervisedDecisionDataset(validation_paths, options, vocabulary) if validation_paths else None
     )
 
-    criterion = nn.CrossEntropyLoss(
-        weight=_build_action_type_weights(
-            options, vocabulary, train_paths, torch, device=device
-        )
+    class_weights = _build_action_type_weights(
+        options, vocabulary, train_paths, torch, device=device
     )
+    criterion = nn.CrossEntropyLoss(weight=class_weights, reduction="none")
 
     def run_epoch(dataset: Any, *, training: bool, epoch: int) -> tuple[float, int]:
         loader = dataloader_cls(
@@ -225,15 +234,18 @@ def train_policy_network(options: TrainOptions) -> TrainingResult:
         max_ex = options.max_examples
         report_every = max(options.batch_size, (max_ex // 20) if max_ex else 50_000)
         next_report = report_every
-        for features, legal_mask, labels in loader:
+        for batch in loader:
+            features, legal_mask, labels, sample_weights = batch
             features = features.to(device)
             legal_mask = legal_mask.to(device)
             labels = labels.to(device)
+            sample_weights = sample_weights.to(device)
             if training:
                 optimizer.zero_grad(set_to_none=True)
             with torch.set_grad_enabled(training):
                 logits = mask_illegal_logits(model(features), legal_mask)
-                loss = criterion(logits, labels)
+                per_example = criterion(logits, labels)
+                loss = (per_example * sample_weights).mean()
             if training:
                 loss.backward()
                 optimizer.step()
@@ -398,7 +410,190 @@ def _iter_examples(replay_paths: tuple[Path, ...], options: TrainOptions) -> Ite
         replay_paths,
         action_types=options.action_types,
         strict=options.strict,
+        example_weighting=options.example_weighting,
     )
+
+
+def train_policy_with_discard_head(options: TrainOptions) -> TrainingResult:
+    """Train global policy, then discard specialist, and save a combined checkpoint."""
+    global_options = replace(options, train_discard_head=False)
+    global_result = train_policy_network(global_options)
+    discard_options = replace(
+        options,
+        action_types=frozenset({"DISCARD"}),
+        train_discard_head=False,
+    )
+    discard_result = train_discard_policy_network(discard_options, global_checkpoint=global_options.output_path)
+    _merge_policy_and_discard_checkpoint(
+        global_path=global_options.output_path,
+        discard_path=discard_result.output_path,
+        output_path=options.output_path,
+    )
+    return TrainingResult(
+        output_path=options.output_path,
+        examples=global_result.examples,
+        action_count=global_result.action_count,
+        final_loss=global_result.final_loss,
+        best_metric=global_result.best_metric,
+    )
+
+
+def train_discard_policy_network(
+    options: TrainOptions,
+    *,
+    global_checkpoint: Path | None = None,
+) -> TrainingResult:
+    """Train a 34-type discard head; optionally inherit feature schema from *global_checkpoint*."""
+    torch, nn, dataloader_cls, iterable_dataset_cls = _import_torch_training()
+    from mahjong_ai.features.tiles import tile_id_to_type_index
+    from mahjong_ai.training.policy import DiscardPolicyConfig, build_discard_policy, mask_illegal_logits
+
+    train_paths, validation_paths, dataset_meta = _resolve_dataset_paths(options)
+    train_paths = _shuffle_paths(train_paths, options.seed)
+    input_shape = EXTENDED_OBSERVATION_SHAPE if options.extended else BASE_OBSERVATION_SHAPE
+    discard_output = options.output_path
+    if global_checkpoint is not None:
+        discard_output = options.output_path.with_name(
+            options.output_path.stem + "_discard_head" + options.output_path.suffix
+        )
+
+    _seed_everything(options.seed, torch)
+    device = torch.device(_resolve_device(options.device, torch))
+    discard_config = DiscardPolicyConfig(
+        input_shape=input_shape,
+        model_arch=options.model_arch,
+        hidden_size=options.hidden_size,
+    )
+    model = build_discard_policy(discard_config).to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=options.learning_rate)
+    criterion = nn.CrossEntropyLoss(reduction="none")
+    discard_type = int(ActionType.DISCARD)
+
+    class DiscardDataset(iterable_dataset_cls):
+        def __init__(self, paths: tuple[Path, ...], opts: TrainOptions) -> None:
+            super().__init__()
+            self.paths = paths
+            self.opts = opts
+
+        def __iter__(self):
+            epoch_paths = _shuffle_paths(self.paths, seed=random.randint(0, 2**31))
+            for example_index, example in enumerate(_iter_examples(epoch_paths, self.opts)):
+                if self.opts.max_examples is not None and example_index >= self.opts.max_examples:
+                    break
+                if int(example.action.action_type) != discard_type:
+                    continue
+                if example.action.tile is None:
+                    continue
+                features = encode_observation(example.observation, extended=self.opts.extended)
+                tensor = torch.frombuffer(bytearray(features.data), dtype=torch.float32)
+                tensor = tensor.reshape(features.shape)
+                type_mask = [False] * 34
+                for action in example.observation.legal_actions():
+                    if int(action.action_type) == discard_type and action.tile is not None:
+                        type_mask[tile_id_to_type_index(action.tile)] = True
+                label = tile_id_to_type_index(example.action.tile)
+                yield (
+                    tensor,
+                    torch.tensor(type_mask, dtype=torch.bool),
+                    torch.tensor(label, dtype=torch.long),
+                    torch.tensor(example.weight, dtype=torch.float32),
+                )
+
+    train_dataset = DiscardDataset(train_paths, options)
+    validation_dataset = DiscardDataset(validation_paths, options) if validation_paths else None
+
+    def run_epoch(dataset: Any, *, training: bool, epoch: int) -> tuple[float, int]:
+        loader = dataloader_cls(dataset, batch_size=options.batch_size, num_workers=options.num_workers)
+        model.train(training)
+        total_loss = 0.0
+        total_examples = 0
+        for features, type_mask, labels, sample_weights in loader:
+            features = features.to(device)
+            type_mask = type_mask.to(device)
+            labels = labels.to(device)
+            sample_weights = sample_weights.to(device)
+            if training:
+                optimizer.zero_grad(set_to_none=True)
+            with torch.set_grad_enabled(training):
+                logits = mask_illegal_logits(model(features), type_mask)
+                per_example = criterion(logits, labels)
+                loss = (per_example * sample_weights).mean()
+            if training:
+                loss.backward()
+                optimizer.step()
+            batch_examples = int(labels.shape[0])
+            total_loss += float(loss.detach().cpu()) * batch_examples
+            total_examples += batch_examples
+        return total_loss / max(total_examples, 1), total_examples
+
+    history: list[dict[str, float | int | None]] = []
+    best_metric = float("inf")
+    best_state_dict = None
+    for epoch in range(1, options.epochs + 1):
+        train_loss, trained = run_epoch(train_dataset, training=True, epoch=epoch)
+        val_loss = None
+        if validation_dataset is not None:
+            val_loss, _ = run_epoch(validation_dataset, training=False, epoch=epoch)
+        metric = val_loss if val_loss is not None else train_loss
+        if metric < best_metric:
+            best_metric = metric
+            best_state_dict = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        history.append({"epoch": epoch, "train_loss": train_loss, "validation_loss": val_loss})
+
+    if best_state_dict is None:
+        raise RuntimeError("Discard-head training produced no checkpoint state")
+
+    discard_output.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint = {
+        "format_version": 2,
+        "model_type": "discard_policy_network",
+        "discard_model_config": discard_config.to_mapping(),
+        "discard_state_dict": best_state_dict,
+        "feature_schema": {
+            "dtype": "float32",
+            "extended": options.extended,
+            "shape": list(input_shape),
+        },
+        "training": _training_metadata(
+            options,
+            str(device),
+            _count_examples(train_paths, options),
+            history,
+            dataset_meta,
+        ),
+    }
+    torch.save(checkpoint, discard_output)
+    return TrainingResult(
+        output_path=discard_output,
+        examples=_count_examples(train_paths, options),
+        action_count=34,
+        final_loss=float(history[-1]["train_loss"]),
+        best_metric=float(best_metric),
+    )
+
+
+def _merge_policy_and_discard_checkpoint(
+    *,
+    global_path: Path,
+    discard_path: Path,
+    output_path: Path,
+) -> None:
+    torch, _, _, _ = _import_torch_training()
+    try:
+        global_ckpt = torch.load(global_path, map_location="cpu", weights_only=False)
+    except TypeError:
+        global_ckpt = torch.load(global_path, map_location="cpu")
+    try:
+        discard_ckpt = torch.load(discard_path, map_location="cpu", weights_only=False)
+    except TypeError:
+        discard_ckpt = torch.load(discard_path, map_location="cpu")
+
+    merged = dict(global_ckpt)
+    merged["model_type"] = "policy_with_discard_head"
+    merged["discard_model_config"] = discard_ckpt["discard_model_config"]
+    merged["discard_state_dict"] = discard_ckpt["discard_state_dict"]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(merged, output_path)
 
 
 def _resolve_dataset_paths(
@@ -517,6 +712,8 @@ def _training_metadata(
         "model_arch": options.model_arch,
         "early_stopping_patience": options.early_stopping_patience,
         "action_type_weight_power": options.action_type_weight_power,
+        "example_weighting": options.example_weighting,
+        "train_discard_head": options.train_discard_head,
         "dataset": dataset_metadata,
         "history": history,
     }
@@ -625,6 +822,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip replay files that riichienv cannot parse",
     )
+    parser.add_argument(
+        "--example-weighting",
+        action="store_true",
+        help="Weight supervised examples by final replay score rank per seat",
+    )
+    parser.add_argument(
+        "--train-discard-head",
+        action="store_true",
+        help="Train global policy plus a discard specialist and save a combined checkpoint",
+    )
     return parser.parse_args()
 
 
@@ -652,6 +859,8 @@ def main() -> None:
             num_workers=args.num_workers,
             early_stopping_patience=args.early_stopping_patience,
             action_type_weight_power=args.action_type_weight_power,
+            example_weighting=args.example_weighting,
+            train_discard_head=args.train_discard_head,
         )
     )
     print(

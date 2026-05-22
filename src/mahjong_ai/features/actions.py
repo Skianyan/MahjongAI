@@ -234,16 +234,53 @@ class ActionVocabulary:
         scores: Sequence[float],
         *,
         add_missing: bool = False,
+        type_fallback_for_discards: bool = False,
     ) -> Action | None:
         """Pick the highest-scoring currently legal action."""
         legal_mask = self.mask_for(observation, add_missing=add_missing)
         if len(scores) != len(legal_mask):
             raise ValueError(f"Expected {len(legal_mask)} scores, got {len(scores)}")
-        if not legal_mask.legal_indices:
+        if legal_mask.legal_indices:
+            best_id = max(legal_mask.legal_indices, key=lambda action_id: scores[action_id])
+            action = self.find_legal_action(observation, best_id)
+            if action is not None:
+                return action
+
+        if type_fallback_for_discards:
+            return self._select_discard_by_tile_type(observation, scores)
+        return None
+
+    def _select_discard_by_tile_type(
+        self,
+        observation: Observation,
+        scores: Sequence[float],
+    ) -> Action | None:
+        """Map unknown discard tile ids to the best-scoring known tile type."""
+        from mahjong_ai.features.tiles import tile_id_to_type_index
+
+        discard_type = int(ActionType.DISCARD)
+        discard_actions = [
+            action
+            for action in observation.legal_actions()
+            if int(action.action_type) == discard_type and action.tile is not None
+        ]
+        if not discard_actions:
             return None
 
-        best_id = max(legal_mask.legal_indices, key=lambda action_id: scores[action_id])
-        return self.find_legal_action(observation, best_id)
+        best_action: Action | None = None
+        best_type_score = -math.inf
+        for candidate in discard_actions:
+            type_index = tile_id_to_type_index(int(candidate.tile))
+            type_score = -math.inf
+            for action_id, spec in enumerate(self.specs):
+                if spec.action_type != discard_type or spec.tile is None:
+                    continue
+                if tile_id_to_type_index(spec.tile) == type_index:
+                    type_score = max(type_score, scores[action_id])
+            if type_score > best_type_score:
+                best_type_score = type_score
+                best_action = candidate
+        return best_action
 
 
 class UnknownActionError(KeyError):

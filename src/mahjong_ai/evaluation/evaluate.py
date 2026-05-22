@@ -16,14 +16,23 @@ from riichienv import RiichiEnv
 from mahjong_ai.agents import (
     Agent,
     FallbackAgent,
+    SafeAgent,
+    get_agent_stats,
     load_checkpoint_agent,
     masked_top_action_id,
     top_k_action_ids,
 )
+from mahjong_ai.agents.stats import AgentStats
 from mahjong_ai.config import load_config
 from mahjong_ai.data import iter_supervised_examples
+from mahjong_ai.evaluation.discard_metrics import (
+    DiscardMetricCounts,
+    discard_metrics_notes,
+    is_discard_action,
+    select_model_discard,
+)
 from mahjong_ai.features import UnknownActionError
-from mahjong_ai.features.actions import ACTION_TYPE_NAMES
+from mahjong_ai.features.actions import ACTION_TYPE_NAMES, ActionSpec
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,10 +105,11 @@ class OfflineEvaluationResult:
     top_k: int
     overall: dict[str, float | int]
     by_action_type: dict[str, dict[str, float | int]]
+    discard_metrics: dict[str, float | int] | None = None
     notes: list[str] = field(default_factory=list)
 
     def to_mapping(self) -> dict[str, Any]:
-        return {
+        payload = {
             "model_path": str(self.model_path),
             "data_path": str(self.data_path),
             "top_k": self.top_k,
@@ -107,6 +117,9 @@ class OfflineEvaluationResult:
             "by_action_type": self.by_action_type,
             "notes": self.notes,
         }
+        if self.discard_metrics is not None:
+            payload["discard_metrics"] = self.discard_metrics
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +133,7 @@ class LocalEvaluationOptions:
     opponent: str = "random"
     max_actions_per_game: int = 5000
     compare_fallback: bool = False
+    fail_on_fallback: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +152,7 @@ class LocalEvaluationResult:
     timeout_actions: int
     seat_metrics: dict[str, dict[str, float | int]]
     comparison: dict[str, float | int] | None = None
+    agent_stats: dict[str, float | int | bool] | None = None
     warnings: list[str] = field(default_factory=list)
     scores: list[list[int]] = field(default_factory=list)
     ranks: list[list[int]] = field(default_factory=list)
@@ -171,9 +186,10 @@ def evaluate_offline(options: OfflineEvaluationOptions) -> OfflineEvaluationResu
     agent = load_checkpoint_agent(options.model_path, device=options.device)
     overall = MetricCounts()
     by_action_type: dict[str, MetricCounts] = {}
+    discard_metrics = DiscardMetricCounts()
     for example_index, example in enumerate(
         iter_supervised_examples(
-            options.data_path,
+            Path(options.data_path),
             action_types=options.action_types,
             strict=options.strict,
         )
@@ -205,7 +221,21 @@ def evaluate_offline(options: OfflineEvaluationOptions) -> OfflineEvaluationResu
             masked_top_ids=masked_top_ids,
             unknown_legal_actions=len(legal_mask.unknown_actions),
         )
+        if is_discard_action(example.action):
+            model_discard = select_model_discard(
+                example.observation,
+                agent.vocabulary,
+                list(scores),
+            )
+            if model_discard is not None:
+                discard_metrics.record(
+                    observation=example.observation,
+                    expert_action=example.action,
+                    model_action=model_discard,
+                    match=ActionSpec.from_action(model_discard) == ActionSpec.from_action(example.action),
+                )
     notes = ["top1/topk son metricas de imitacion, no de fuerza real."]
+    notes.extend(discard_metrics_notes())
     if overall.examples_with_unknown_legal_actions:
         notes.append("se detectaron acciones legales fuera del vocabulario del checkpoint.")
     return OfflineEvaluationResult(
@@ -214,16 +244,20 @@ def evaluate_offline(options: OfflineEvaluationOptions) -> OfflineEvaluationResu
         top_k=options.top_k,
         overall=overall.rates(),
         by_action_type={key: value.rates() for key, value in sorted(by_action_type.items())},
+        discard_metrics=discard_metrics.rates() if discard_metrics.discard_examples else None,
         notes=notes,
     )
 
 
 def evaluate_local(options: LocalEvaluationOptions) -> LocalEvaluationResult:
-    controlled_agent: Agent = (
-        load_checkpoint_agent(options.model_path, device=options.device)
-        if options.model_path is not None
-        else FallbackAgent()
-    )
+    if options.model_path is not None:
+        primary = load_checkpoint_agent(options.model_path, device=options.device)
+        stats = get_agent_stats(primary) or AgentStats()
+        fallback = FallbackAgent(stats=stats)
+        controlled_agent: Agent = SafeAgent(primary=primary, fallback=fallback, stats=stats)
+    else:
+        stats = AgentStats()
+        controlled_agent = FallbackAgent(stats=stats)
     opponent_agents = _build_opponents(options.opponent)
 
     all_scores: list[list[int]] = []
@@ -289,6 +323,13 @@ def evaluate_local(options: LocalEvaluationOptions) -> LocalEvaluationResult:
     if unfinished_games > 0:
         warnings.append("partidas cortadas por max_actions_per_game.")
 
+    agent_stats_mapping = stats.to_mapping() if stats is not None else None
+    if options.fail_on_fallback and stats is not None and stats.fallback_decisions() > 0:
+        raise RuntimeError(
+            f"Local evaluation used fallback for {stats.fallback_decisions()} decisions "
+            f"(rate={stats.fallback_rate():.4f})."
+        )
+
     comparison = None
     if options.compare_fallback:
         baseline = evaluate_local(
@@ -328,6 +369,7 @@ def evaluate_local(options: LocalEvaluationOptions) -> LocalEvaluationResult:
         timeout_actions=timeout_actions,
         seat_metrics=seat_metrics,
         comparison=comparison,
+        agent_stats=agent_stats_mapping,
         warnings=warnings,
         scores=all_scores,
         ranks=all_ranks,
@@ -438,6 +480,11 @@ def parse_args() -> argparse.Namespace:
     local.add_argument("--opponent", choices=("random", "fallback"), default="random")
     local.add_argument("--max-actions-per-game", type=int, default=5000)
     local.add_argument("--compare-fallback", action="store_true")
+    local.add_argument(
+        "--fail-on-fallback",
+        action="store_true",
+        help="Abort local evaluation if any decision used fallback",
+    )
 
     tournament = subparsers.add_parser("tournament", help="Run local baseline tournament")
     tournament.add_argument("--model", type=Path, default=config.model.artifact_path)
@@ -476,6 +523,7 @@ def main() -> None:
                 opponent=args.opponent,
                 max_actions_per_game=args.max_actions_per_game,
                 compare_fallback=args.compare_fallback,
+                fail_on_fallback=args.fail_on_fallback,
             )
         )
     else:
