@@ -1,0 +1,134 @@
+{
+  "model_path": "models/allyears_v4_no_discard_downweight.pt",
+  "data_path": "data/2025",
+  "top_k": 5,
+  "overall": {
+    "examples": 99999,
+    "top1_accuracy": 0.6943769437694377,
+    "topk_accuracy": 0.962849628496285,
+    "raw_top1_illegal_rate": 0.999509995099951,
+    "unknown_labels": 1,
+    "no_known_legal_actions": 0,
+    "unknown_legal_actions": 11,
+    "examples_with_unknown_legal_actions": 11,
+    "unknown_legal_action_rate": 0.00011000110001100011
+  },
+  "by_action_type": {
+    "ANKAN": {
+      "examples": 86,
+      "top1_accuracy": 0.47674418604651164,
+      "topk_accuracy": 0.813953488372093,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "CHI": {
+      "examples": 1573,
+      "top1_accuracy": 0.9078194532739987,
+      "topk_accuracy": 0.9993642720915448,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 1,
+      "examples_with_unknown_legal_actions": 1,
+      "unknown_legal_action_rate": 0.0006357279084551812
+    },
+    "DAIMINKAN": {
+      "examples": 11,
+      "top1_accuracy": 0.7272727272727273,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 1,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 1,
+      "examples_with_unknown_legal_actions": 1,
+      "unknown_legal_action_rate": 0.09090909090909091
+    },
+    "DISCARD": {
+      "examples": 93030,
+      "top1_accuracy": 0.6810813716005589,
+      "topk_accuracy": 0.9603246264645813,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 7,
+      "examples_with_unknown_legal_actions": 7,
+      "unknown_legal_action_rate": 7.524454477050414e-05
+    },
+    "KAKAN": {
+      "examples": 48,
+      "top1_accuracy": 0.2916666666666667,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "PON": {
+      "examples": 2175,
+      "top1_accuracy": 0.9981609195402299,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 2,
+      "examples_with_unknown_legal_actions": 2,
+      "unknown_legal_action_rate": 0.0009195402298850574
+    },
+    "RIICHI": {
+      "examples": 1418,
+      "top1_accuracy": 0.5331452750352609,
+      "topk_accuracy": 0.9950634696755994,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "RON": {
+      "examples": 1001,
+      "top1_accuracy": 1.0,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 0.951048951048951,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "TSUMO": {
+      "examples": 657,
+      "top1_accuracy": 1.0,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    }
+  },
+  "notes": [
+    "top1/topk son metricas de imitacion, no de fuerza real.",
+    "Bad-discard metrics are diagnostic; high expert red-five rate may be normal in some datasets.",
+    "Pair-break counts discards where the tile still appears at least twice in the current hand.",
+    "se detectaron acciones legales fuera del vocabulario del checkpoint."
+  ],
+  "discard_metrics": {
+    "discard_examples": 93030,
+    "discard_match_rate": 0.6844351284531871,
+    "model_red_five_discard_rate": 0.005019886058260776,
+    "expert_red_five_discard_rate": 0.006943996560249382,
+    "model_honor_discard_rate": 0.36016338815435883,
+    "model_terminal_discard_rate": 0.6152316457056863,
+    "model_pair_break_rate": 0.10458991723100075,
+    "model_shanten_regression_rate": 0.0564441577985596,
+    "expert_shanten_regression_rate": 0.0007309470063420402
+  }
+}
