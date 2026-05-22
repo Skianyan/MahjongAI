@@ -50,6 +50,7 @@ class TrainOptions:
     num_workers: int = 0
     early_stopping_patience: int | None = None
     action_type_weight_power: float = 0.0
+    riichi_weight_multiplier: float = 1.0
     example_weighting: bool = False
     train_discard_head: bool = False
 
@@ -634,7 +635,9 @@ def _build_action_type_weights(
     torch_module: Any,
     device: Any,
 ):
-    if options.action_type_weight_power <= 0:
+    riichi_type = int(ActionType.RIICHI)
+    needs_weights = options.action_type_weight_power > 0 or options.riichi_weight_multiplier != 1.0
+    if not needs_weights:
         return None
     vocab_cap = options.max_examples if options.max_examples is not None else _VOCAB_SCAN_MAX_EXAMPLES
     type_counts: Counter[int] = Counter()
@@ -654,7 +657,9 @@ def _build_action_type_weights(
     for label in range(len(vocabulary)):
         spec = vocabulary.decode(label)
         type_count = type_counts.get(spec.action_type, 1)
-        value = (1.0 / type_count) ** options.action_type_weight_power
+        value = (1.0 / type_count) ** options.action_type_weight_power if options.action_type_weight_power > 0 else 1.0
+        if spec.action_type == riichi_type:
+            value *= options.riichi_weight_multiplier
         weights.append(value)
     mean_weight = sum(weights) / max(len(weights), 1)
     normalized = [weight / max(mean_weight, 1e-12) for weight in weights]
@@ -712,6 +717,7 @@ def _training_metadata(
         "model_arch": options.model_arch,
         "early_stopping_patience": options.early_stopping_patience,
         "action_type_weight_power": options.action_type_weight_power,
+        "riichi_weight_multiplier": options.riichi_weight_multiplier,
         "example_weighting": options.example_weighting,
         "train_discard_head": options.train_discard_head,
         "dataset": dataset_metadata,
@@ -798,6 +804,12 @@ def parse_args() -> argparse.Namespace:
         help="Reweight rare action types with inverse-frequency**power. 0 disables.",
     )
     parser.add_argument(
+        "--riichi-weight-multiplier",
+        type=float,
+        default=1.0,
+        help="Extra loss weight multiplier applied to RIICHI actions. 1.0 disables.",
+    )
+    parser.add_argument(
         "--model-type",
         choices=("auto", "policy-network", "action-prior"),
         default="auto",
@@ -859,6 +871,7 @@ def main() -> None:
             num_workers=args.num_workers,
             early_stopping_patience=args.early_stopping_patience,
             action_type_weight_power=args.action_type_weight_power,
+            riichi_weight_multiplier=args.riichi_weight_multiplier,
             example_weighting=args.example_weighting,
             train_discard_head=args.train_discard_head,
         )

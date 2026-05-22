@@ -124,6 +124,12 @@ class ActionPriorAgent:
             type_fallback_for_discards=True,
         )
         if action is not None:
+            action = _apply_discard_safety_filter(
+                observation,
+                action,
+                lambda a: _vocab_score(self.vocabulary, self._log_priors, a),
+                self.stats,
+            )
             self.stats.record_primary()
             return action
         self.stats.record_no_known_legal_fallback()
@@ -169,6 +175,12 @@ class MLPPolicyAgent:
             type_fallback_for_discards=True,
         )
         if action is not None:
+            action = _apply_discard_safety_filter(
+                observation,
+                action,
+                lambda a: _vocab_score(self.vocabulary, scores, a),
+                self.stats,
+            )
             self.stats.record_primary()
             return action
         self.stats.record_no_known_legal_fallback()
@@ -227,6 +239,12 @@ class DiscardPolicyAgent:
                 and action.tile is not None
                 and tile_id_to_type_index(action.tile) == best_type
             ):
+                action = _apply_discard_safety_filter(
+                    observation,
+                    action,
+                    lambda a: masked[tile_id_to_type_index(a.tile)] if a.tile is not None else -1e9,
+                    self.stats,
+                )
                 self.stats.record_primary()
                 return action
         self.stats.record_no_known_legal_fallback()
@@ -391,6 +409,82 @@ def masked_top_action_id(scores: Sequence[float], legal_indices: Sequence[int]) 
 
 def _first_of_type(actions: list[Action], action_type: ActionType) -> Action | None:
     return next((action for action in actions if action.action_type == action_type), None)
+
+
+def _vocab_score(vocabulary: ActionVocabulary, scores: Sequence[float], action: Action) -> float:
+    """Return the model score for *action*, falling back to tile priority if unknown."""
+    from mahjong_ai.features.actions import UnknownActionError
+
+    try:
+        return scores[vocabulary.encode(action)]
+    except (UnknownActionError, IndexError):
+        return discard_priority_score(action.tile)
+
+
+def _apply_discard_safety_filter(
+    observation: Observation,
+    chosen: Action,
+    discard_scorer: Any,
+    stats: AgentStats,
+) -> Action:
+    """Redirect shanten-regressing or unjustified red-five discards to safer alternatives.
+
+    Only acts on DISCARD decisions. When the chosen discard would increase shanten and
+    a non-regressing alternative exists, redirects to the best-scoring safe discard.
+    When the chosen discard is a red five with a non-red-five safe alternative, also
+    redirects. Both cases increment the corresponding counter on *stats*.
+    """
+    from riichienv import calculate_shanten
+    from mahjong_ai.features.tiles import is_red_five_tile
+
+    if int(chosen.action_type) != int(ActionType.DISCARD) or chosen.tile is None:
+        return chosen
+
+    legal_discards = [
+        a
+        for a in observation.legal_actions()
+        if int(a.action_type) == int(ActionType.DISCARD) and a.tile is not None
+    ]
+    if len(legal_discards) <= 1:
+        return chosen
+
+    hand = list(observation.hand)
+    shanten_before = calculate_shanten(hand)
+    hand_after = list(hand)
+    if chosen.tile in hand_after:
+        hand_after.remove(chosen.tile)
+    shanten_after = calculate_shanten(hand_after)
+
+    if shanten_after > shanten_before:
+        safe = []
+        for alt in legal_discards:
+            if alt.tile == chosen.tile:
+                continue
+            h = list(hand)
+            if alt.tile in h:
+                h.remove(alt.tile)
+            if calculate_shanten(h) <= shanten_before:
+                safe.append(alt)
+        if safe:
+            stats.shanten_filter_redirects += 1
+            return max(safe, key=discard_scorer)
+        return chosen
+
+    if is_red_five_tile(chosen.tile):
+        safe_non_red = []
+        for alt in legal_discards:
+            if alt.tile == chosen.tile or is_red_five_tile(alt.tile):
+                continue
+            h = list(hand)
+            if alt.tile in h:
+                h.remove(alt.tile)
+            if calculate_shanten(h) <= shanten_before:
+                safe_non_red.append(alt)
+        if safe_non_red:
+            stats.red_five_filter_redirects += 1
+            return max(safe_non_red, key=discard_scorer)
+
+    return chosen
 
 
 def _load_checkpoint(path: Path, *, device: str) -> dict[str, Any]:

@@ -16,6 +16,8 @@ class AgentStats:
     inference_exception_fallback: int = 0
     no_known_legal_fallback: int = 0
     heuristic_fallback_decisions: int = 0
+    shanten_filter_redirects: int = 0
+    red_five_filter_redirects: int = 0
 
     def record_primary(self) -> None:
         self.total_decisions += 1
@@ -55,6 +57,8 @@ class AgentStats:
             "heuristic_fallback_decisions": self.heuristic_fallback_decisions,
             "fallback_decisions": self.fallback_decisions(),
             "fallback_rate": self.fallback_rate(),
+            "shanten_filter_redirects": self.shanten_filter_redirects,
+            "red_five_filter_redirects": self.red_five_filter_redirects,
         }
 
     def copy(self) -> AgentStats:
@@ -65,6 +69,8 @@ class AgentStats:
             inference_exception_fallback=self.inference_exception_fallback,
             no_known_legal_fallback=self.no_known_legal_fallback,
             heuristic_fallback_decisions=self.heuristic_fallback_decisions,
+            shanten_filter_redirects=self.shanten_filter_redirects,
+            red_five_filter_redirects=self.red_five_filter_redirects,
         )
 
     def snapshot_delta(self, before: AgentStats) -> dict[str, Any]:
