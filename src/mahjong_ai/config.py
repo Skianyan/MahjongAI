@@ -51,12 +51,41 @@ class EvaluationConfig:
 
 
 @dataclass(frozen=True)
+class RLTrainingConfig:
+    """Hyper-parameters for REINFORCE policy-gradient training in RiichiEnv."""
+
+    warmstart_model: Path
+    episodes_per_update: int = 16
+    rl_epochs: int = 200
+    gamma: float = 1.0
+    entropy_coef: float = 0.01
+    baseline_momentum: float = 0.99
+    reward_mode: str = "rank"
+    opponent: str = "random"
+    learning_rate: float = 1e-4
+    game_mode: str = "4p-red-single"
+    max_actions_per_game: int = 5000
+    controlled_seat: int = 0
+    mortal_binary: str | None = None
+    mortal_model_dir: Path | None = None
+    mortal_docker_image: str = "mortal:latest"
+    mortal_timeout: float = 30.0
+    akochan_dir: str | None = None
+    akochan_tactics: Path | None = None
+    akochan_timeout: float = 30.0
+    shanten_bonus: float = 0.05
+    tenpai_bonus: float = 0.10
+    riichi_bonus: float = 0.10
+
+
+@dataclass(frozen=True)
 class AppConfig:
     bot: BotConfig
     data: DataConfig
     model: ModelConfig
     training: TrainingConfig
     evaluation: EvaluationConfig
+    rl_training: RLTrainingConfig
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:
@@ -90,6 +119,49 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             ),
         ),
         evaluation=EvaluationConfig(**_section(data, "evaluation")),
+        rl_training=_load_rl_training(data, model_artifact=Path(_section(data, "model")["artifact_path"])),
+    )
+
+
+def _load_rl_training(data: dict[str, Any], *, model_artifact: Path) -> RLTrainingConfig:
+    section = data.get("rl_training")
+    if not isinstance(section, dict):
+        return RLTrainingConfig(warmstart_model=model_artifact)
+    warmstart = section.get("warmstart_model")
+    warmstart_path = Path(warmstart) if warmstart else model_artifact
+    _raw_akochan_dir = section.get("akochan_dir")
+    akochan_dir = (
+        (str(_raw_akochan_dir).strip() or None) if _raw_akochan_dir is not None else None
+    )
+    return RLTrainingConfig(
+        warmstart_model=warmstart_path,
+        episodes_per_update=int(section.get("episodes_per_update", 16)),
+        rl_epochs=int(section.get("rl_epochs", 200)),
+        gamma=float(section.get("gamma", 1.0)),
+        entropy_coef=float(section.get("entropy_coef", 0.01)),
+        baseline_momentum=float(section.get("baseline_momentum", 0.99)),
+        reward_mode=str(section.get("reward_mode", "rank")),
+        opponent=str(section.get("opponent", "random")),
+        learning_rate=float(section.get("learning_rate", 1e-4)),
+        game_mode=str(section.get("game_mode", "4p-red-single")),
+        max_actions_per_game=int(section.get("max_actions_per_game", 5000)),
+        controlled_seat=int(section.get("controlled_seat", 0)),
+        mortal_binary=(
+            str(section["mortal_binary"]).strip() if section.get("mortal_binary") else None
+        ),
+        mortal_model_dir=(
+            Path(section["mortal_model_dir"]) if section.get("mortal_model_dir") else None
+        ),
+        mortal_docker_image=str(section.get("mortal_docker_image", "mortal:latest")),
+        mortal_timeout=float(section.get("mortal_timeout", 30.0)),
+        akochan_dir=akochan_dir,
+        akochan_tactics=(
+            Path(section["akochan_tactics"]) if section.get("akochan_tactics") else None
+        ),
+        akochan_timeout=float(section.get("akochan_timeout", 30.0)),
+        shanten_bonus=float(section.get("shanten_bonus", 0.05)),
+        tenpai_bonus=float(section.get("tenpai_bonus", 0.10)),
+        riichi_bonus=float(section.get("riichi_bonus", 0.10)),
     )
 
 

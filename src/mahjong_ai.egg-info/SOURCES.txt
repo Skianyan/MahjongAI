@@ -1,6 +1,8 @@
+README.md
 pyproject.toml
 src/mahjong_ai/__init__.py
-src/mahjong_ai/agents.py
+src/mahjong_ai/agents/__init__.py
+src/mahjong_ai/agents/mortal.py
 src/mahjong_ai/bot_runner.py
 src/mahjong_ai/config.py
 src/mahjong_ai/data.py
@@ -19,4 +21,5 @@ src/mahjong_ai/features/actions.py
 src/mahjong_ai/features/encoding.py
 src/mahjong_ai/training/__init__.py
 src/mahjong_ai/training/policy.py
+src/mahjong_ai/training/rl_train.py
 src/mahjong_ai/training/train.py

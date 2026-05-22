@@ -205,3 +205,22 @@ def _resolve_device(requested: str, torch_module: Any) -> str:
     if hasattr(torch_module.backends, "mps") and torch_module.backends.mps.is_available():
         return "mps"
     return "cpu"
+
+
+from .akochan import AkochanAgent, build_akochan_argv
+from .mortal import MortalAgent, build_mortal_argv
+
+__all__ = [
+    "Agent",
+    "ScoringAgent",
+    "FallbackAgent",
+    "ActionPriorAgent",
+    "MLPPolicyAgent",
+    "MortalAgent",
+    "build_mortal_argv",
+    "AkochanAgent",
+    "build_akochan_argv",
+    "load_checkpoint_agent",
+    "top_k_action_ids",
+    "masked_top_action_id",
+]

@@ -8,7 +8,7 @@ import math
 import random
 from collections import Counter
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +18,7 @@ from mahjong_ai.data import (
     list_replay_paths,
     split_replay_paths,
 )
-from mahjong_ai.features import ActionVocabulary
+from mahjong_ai.features import ActionVocabulary, UnknownActionError
 from mahjong_ai.features.encoding import BASE_OBSERVATION_SHAPE, EXTENDED_OBSERVATION_SHAPE
 
 
@@ -139,7 +139,19 @@ def train_policy_network(options: TrainOptions) -> TrainingResult:
     from mahjong_ai.training.policy import PolicyModelConfig, build_policy_model, mask_illegal_logits
 
     train_paths, validation_paths, dataset_meta = _resolve_dataset_paths(options)
+    # Shuffle training paths so the vocabulary scan and every training epoch draw
+    # from all year-subdirectories uniformly rather than only the first sorted year.
+    train_paths = _shuffle_paths(train_paths, options.seed)
     vocabulary, example_count = build_action_vocabulary(options, train_paths)
+    # Skip vocab extension when training scan already covered >= _VOCAB_SCAN_MAX_EXAMPLES
+    # examples — the action space is fixed in Mahjong and is complete by that point.
+    vocab_was_capped = (
+        options.max_examples is not None and options.max_examples < _VOCAB_SCAN_MAX_EXAMPLES
+    )
+    if validation_paths and vocab_was_capped:
+        extend_action_vocabulary_from_paths(options, vocabulary, validation_paths)
+    elif validation_paths:
+        print(f"skipping vocabulary extension (training scan of {example_count:,} examples is sufficient)", flush=True)
     if example_count == 0:
         raise RuntimeError(f"No supervised examples found under {options.train_data_path}")
     if len(vocabulary) == 0:
@@ -170,10 +182,16 @@ def train_policy_network(options: TrainOptions) -> TrainingResult:
             self.vocabulary = output_vocabulary
 
         def __iter__(self):
-            for example_index, example in enumerate(_iter_examples(self.replay_paths, self.options)):
+            # Reshuffle replay files every epoch so each epoch draws from all
+            # year-subdirectories, not just the first files in sorted order.
+            epoch_paths = _shuffle_paths(self.replay_paths, seed=random.randint(0, 2**31))
+            for example_index, example in enumerate(_iter_examples(epoch_paths, self.options)):
                 if self.options.max_examples is not None and example_index >= self.options.max_examples:
                     break
-                encoded = example.encoded_decision(self.vocabulary, extended=self.options.extended)
+                try:
+                    encoded = example.encoded_decision(self.vocabulary, extended=self.options.extended)
+                except UnknownActionError:
+                    continue
                 features = torch.frombuffer(bytearray(encoded.features.data), dtype=torch.float32)
                 features = features.reshape(encoded.features.shape)
                 legal_mask = torch.tensor(encoded.legal_actions.mask, dtype=torch.bool)
@@ -186,10 +204,12 @@ def train_policy_network(options: TrainOptions) -> TrainingResult:
     )
 
     criterion = nn.CrossEntropyLoss(
-        weight=_build_action_type_weights(options, vocabulary, train_paths, torch)
+        weight=_build_action_type_weights(
+            options, vocabulary, train_paths, torch, device=device
+        )
     )
 
-    def run_epoch(dataset: Any, *, training: bool) -> tuple[float, int]:
+    def run_epoch(dataset: Any, *, training: bool, epoch: int) -> tuple[float, int]:
         loader = dataloader_cls(
             dataset,
             batch_size=options.batch_size,
@@ -201,6 +221,10 @@ def train_policy_network(options: TrainOptions) -> TrainingResult:
             model.eval()
         total_loss = 0.0
         total_examples = 0
+        phase = "train" if training else "val"
+        max_ex = options.max_examples
+        report_every = max(options.batch_size, (max_ex // 20) if max_ex else 50_000)
+        next_report = report_every
         for features, legal_mask, labels in loader:
             features = features.to(device)
             legal_mask = legal_mask.to(device)
@@ -216,6 +240,22 @@ def train_policy_network(options: TrainOptions) -> TrainingResult:
             batch_examples = int(labels.shape[0])
             total_loss += float(loss.detach().cpu()) * batch_examples
             total_examples += batch_examples
+            if total_examples >= next_report:
+                running_loss = total_loss / max(total_examples, 1)
+                if max_ex:
+                    pct = min(100.0, 100.0 * total_examples / max_ex)
+                    print(
+                        f"  epoch {epoch} [{phase}] {pct:5.1f}%  "
+                        f"examples={total_examples}  loss={running_loss:.4f}",
+                        flush=True,
+                    )
+                else:
+                    print(
+                        f"  epoch {epoch} [{phase}] examples={total_examples}  "
+                        f"loss={running_loss:.4f}",
+                        flush=True,
+                    )
+                next_report += report_every
         return total_loss / max(total_examples, 1), total_examples
 
     history: list[dict[str, float | int | None]] = []
@@ -225,13 +265,13 @@ def train_policy_network(options: TrainOptions) -> TrainingResult:
     stale_epochs = 0
 
     for epoch in range(1, options.epochs + 1):
-        train_loss, trained_examples = run_epoch(train_dataset, training=True)
+        train_loss, trained_examples = run_epoch(train_dataset, training=True, epoch=epoch)
         if trained_examples == 0:
             raise RuntimeError("The training dataset produced no examples")
         validation_loss = None
         validation_examples = 0
         if validation_dataset is not None:
-            validation_loss, validation_examples = run_epoch(validation_dataset, training=False)
+            validation_loss, validation_examples = run_epoch(validation_dataset, training=False, epoch=epoch)
 
         metric = validation_loss if validation_loss is not None else train_loss
         improved = metric < best_metric
@@ -304,18 +344,53 @@ def train_policy_network(options: TrainOptions) -> TrainingResult:
         best_metric=float(best_metric),
     )
 
+# Mahjong's action vocabulary is finite and small; it converges well within this cap.
+_VOCAB_SCAN_MAX_EXAMPLES = 200_000
+
 
 def build_action_vocabulary(options: TrainOptions, replay_paths: tuple[Path, ...]) -> tuple[ActionVocabulary, int]:
-    """Scan examples once to create the stable output vocabulary."""
+    """Scan examples to create the stable output vocabulary.
+
+    Caps at *options.max_examples* when set, otherwise at ``_VOCAB_SCAN_MAX_EXAMPLES``
+    so the vocab scan stays fast regardless of dataset size.
+    """
+    vocab_cap = options.max_examples if options.max_examples is not None else _VOCAB_SCAN_MAX_EXAMPLES
     vocabulary = ActionVocabulary()
     example_count = 0
+    print(f"building vocabulary (scanning up to {vocab_cap:,} examples)...", flush=True)
     for example_index, example in enumerate(_iter_examples(replay_paths, options)):
-        if options.max_examples is not None and example_index >= options.max_examples:
+        if example_index >= vocab_cap:
             break
         vocabulary.add_actions(example.observation.legal_actions())
         vocabulary.add(example.action)
         example_count += 1
+        if example_count % 50_000 == 0:
+            print(f"  vocab scan: {example_count:,} examples, {len(vocabulary)} actions so far", flush=True)
+    print(f"vocabulary built: {len(vocabulary)} actions from {example_count:,} examples", flush=True)
     return vocabulary, example_count
+
+
+# Bound validation-only vocabulary scans so large replay splits stay tractable.
+_VOCAB_EXTENSION_MAX_EXAMPLES = 100_000
+
+
+def extend_action_vocabulary_from_paths(
+    options: TrainOptions,
+    vocabulary: ActionVocabulary,
+    replay_paths: tuple[Path, ...],
+) -> None:
+    """Add any actions from *replay_paths* so validation labels stay encodable."""
+    if not replay_paths:
+        return
+    cap = min(
+        options.max_examples if options.max_examples is not None else _VOCAB_EXTENSION_MAX_EXAMPLES,
+        _VOCAB_EXTENSION_MAX_EXAMPLES,
+    )
+    print(f"extending vocabulary from validation paths (cap={cap} examples)...", flush=True)
+    val_options = replace(options, max_examples=cap)
+    for example in _iter_examples(replay_paths, val_options):
+        vocabulary.add_actions(example.observation.legal_actions())
+        vocabulary.add(example.action)
 
 
 def _iter_examples(replay_paths: tuple[Path, ...], options: TrainOptions) -> Iterator[Any]:
@@ -329,6 +404,7 @@ def _iter_examples(replay_paths: tuple[Path, ...], options: TrainOptions) -> Ite
 def _resolve_dataset_paths(
     options: TrainOptions,
 ) -> tuple[tuple[Path, ...], tuple[Path, ...], dict[str, Any]]:
+    print(f"listing replay files under {options.train_data_path} ...", flush=True)
     if options.validation_data_path is not None:
         train_paths = list_replay_paths(options.train_data_path)
         validation_paths = list_replay_paths(options.validation_data_path)
@@ -338,6 +414,7 @@ def _resolve_dataset_paths(
             validation_ratio=options.validation_ratio,
             seed=options.seed,
         )
+    print(f"found {len(train_paths)} train + {len(validation_paths)} validation replay files", flush=True)
     return train_paths, validation_paths, {
         "train_replays": len(train_paths),
         "validation_replays": len(validation_paths),
@@ -360,15 +437,20 @@ def _build_action_type_weights(
     vocabulary: ActionVocabulary,
     replay_paths: tuple[Path, ...],
     torch_module: Any,
+    device: Any,
 ):
     if options.action_type_weight_power <= 0:
         return None
+    vocab_cap = options.max_examples if options.max_examples is not None else _VOCAB_SCAN_MAX_EXAMPLES
     type_counts: Counter[int] = Counter()
     label_counts: Counter[int] = Counter()
     for example_index, example in enumerate(_iter_examples(replay_paths, options)):
-        if options.max_examples is not None and example_index >= options.max_examples:
+        if example_index >= vocab_cap:
             break
-        label = vocabulary.encode(example.action)
+        try:
+            label = vocabulary.encode(example.action)
+        except UnknownActionError:
+            continue
         label_counts[label] += 1
         type_counts[int(example.action.action_type)] += 1
     if not label_counts:
@@ -381,7 +463,14 @@ def _build_action_type_weights(
         weights.append(value)
     mean_weight = sum(weights) / max(len(weights), 1)
     normalized = [weight / max(mean_weight, 1e-12) for weight in weights]
-    return torch_module.tensor(normalized, dtype=torch_module.float32)
+    return torch_module.tensor(normalized, dtype=torch_module.float32).to(device)
+
+
+def _shuffle_paths(paths: tuple[Path, ...], seed: int) -> tuple[Path, ...]:
+    """Return *paths* in a deterministically shuffled order for a given *seed*."""
+    lst = list(paths)
+    random.Random(seed).shuffle(lst)
+    return tuple(lst)
 
 
 def _seed_everything(seed: int, torch_module: Any) -> None:

@@ -3,7 +3,7 @@ endpoint = "wss://game.riichi.dev/ws/validate"
 token_env = "RIICHI_BOT_TOKEN"
 
 [data]
-raw_dir = "data/raw"
+raw_dir = "data"
 processed_dir = "data/processed"
 
 [model]
@@ -25,3 +25,31 @@ action_type_weight_power = 0.5
 [evaluation]
 games = 100
 timeout_seconds = 3.0
+
+[rl_training]
+warmstart_model = "models/policy.pt"
+episodes_per_update = 16
+rl_epochs = 200
+gamma = 1.0
+entropy_coef = 0.01
+baseline_momentum = 0.99
+reward_mode = "rank"
+opponent = "akochan"
+learning_rate = 0.0001
+game_mode = "4p-red-single"
+max_actions_per_game = 5000
+controlled_seat = 0
+shanten_bonus = 0.05
+tenpai_bonus = 0.10
+riichi_bonus = 0.10
+# Mortal subprocess opponent (requires riichienv Observation.new_events(); see README)
+# mortal_binary = "docker"
+# mortal_model_dir = "/path/to/mortal/model/dir"
+# mortal_docker_image = "mortal:latest"
+# mortal_timeout = 30.0
+
+# Akochan subprocess opponent (requires riichienv Observation.new_events(); build from critter-mj/akochan)
+# opponent = "akochan"
+akochan_dir = "/home/ricar/akochan"
+akochan_tactics = "/home/ricar/akochan/tactics.json"
+akochan_timeout = 30.0

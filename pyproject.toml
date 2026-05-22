@@ -23,6 +23,7 @@ train = [
 mahjong-ai-bot = "mahjong_ai.bot_runner:main"
 mahjong-ai-evaluate = "mahjong_ai.evaluation.evaluate:main"
 mahjong-ai-train = "mahjong_ai.training.train:main"
+mahjong-ai-rl-train = "mahjong_ai.training.rl_train:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

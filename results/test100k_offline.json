@@ -1,0 +1,120 @@
+{
+  "model_path": "models/test100k.pt",
+  "data_path": "data/raw",
+  "top_k": 5,
+  "overall": {
+    "examples": 100000,
+    "top1_accuracy": 0.61721,
+    "topk_accuracy": 0.89645,
+    "raw_top1_illegal_rate": 0.99955,
+    "unknown_labels": 0,
+    "no_known_legal_actions": 0,
+    "unknown_legal_actions": 0,
+    "examples_with_unknown_legal_actions": 0,
+    "unknown_legal_action_rate": 0.0
+  },
+  "by_action_type": {
+    "ANKAN": {
+      "examples": 86,
+      "top1_accuracy": 0.8488372093023255,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "CHI": {
+      "examples": 1573,
+      "top1_accuracy": 0.9726636999364272,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "DAIMINKAN": {
+      "examples": 12,
+      "top1_accuracy": 1.0,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "DISCARD": {
+      "examples": 93030,
+      "top1_accuracy": 0.5922498118886381,
+      "topk_accuracy": 0.8888100612705578,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "KAKAN": {
+      "examples": 48,
+      "top1_accuracy": 0.8125,
+      "topk_accuracy": 0.9791666666666666,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "PON": {
+      "examples": 2175,
+      "top1_accuracy": 1.0,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "RIICHI": {
+      "examples": 1418,
+      "top1_accuracy": 0.8018335684062059,
+      "topk_accuracy": 0.9929478138222849,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "RON": {
+      "examples": 1001,
+      "top1_accuracy": 1.0,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "TSUMO": {
+      "examples": 657,
+      "top1_accuracy": 1.0,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 0.9315068493150684,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    }
+  },
+  "notes": [
+    "top1/topk son metricas de imitacion, no de fuerza real."
+  ]
+}

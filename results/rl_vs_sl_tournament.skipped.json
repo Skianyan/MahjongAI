@@ -1,0 +1,6 @@
+{
+  "status": "not_executed_in_agent_environment",
+  "reason": "PyTorch/torch not available in default Python and temp venv install hit disk quota; run locally after pip install -e '.[train]'.",
+  "run_short_rl_then_tournament": "bash scripts/run_rl_vs_sl_tournament.sh",
+  "run_tournament_only": "PYTHONPATH=src mahjong-ai-evaluate tournament --model models/rl_policy.pt --baseline-model models/policy.pt --games 500 > results/rl_vs_sl_tournament.json"
+}

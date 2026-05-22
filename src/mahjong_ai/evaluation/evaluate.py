@@ -139,8 +139,8 @@ class LocalEvaluationResult:
     seat_metrics: dict[str, dict[str, float | int]]
     comparison: dict[str, float | int] | None = None
     warnings: list[str] = field(default_factory=list)
-    scores: list[list[int]] = field(repr=False)
-    ranks: list[list[int]] = field(repr=False)
+    scores: list[list[int]] = field(default_factory=list)
+    ranks: list[list[int]] = field(default_factory=list)
 
     def to_mapping(self) -> dict[str, Any]:
         return asdict(self)
