@@ -20,7 +20,7 @@ validation_ratio = 0.1
 seed = 7
 num_workers = 0
 early_stopping_patience = 3
-action_type_weight_power = 0.5
+action_type_weight_power = 0.0
 
 [evaluation]
 games = 100
@@ -44,12 +44,12 @@ tenpai_bonus = 0.10
 riichi_bonus = 0.10
 # Mortal subprocess opponent (requires riichienv Observation.new_events(); see README)
 # mortal_binary = "docker"
-# mortal_model_dir = "/path/to/mortal/model/dir"
+# mortal_model_dir = "RLModels/Mortal"
 # mortal_docker_image = "mortal:latest"
 # mortal_timeout = 30.0
 
 # Akochan subprocess opponent (requires riichienv Observation.new_events(); build from critter-mj/akochan)
 # opponent = "akochan"
-akochan_dir = "/home/ricar/akochan"
-akochan_tactics = "/home/ricar/akochan/tactics.json"
+akochan_dir = "RLModels/akochan"
+akochan_tactics = "RLModels/akochan/tactics.json"
 akochan_timeout = 30.0

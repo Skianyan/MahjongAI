@@ -1,0 +1,133 @@
+{
+  "model_path": "models/allyears_v3_ext.pt",
+  "data_path": "data/2025",
+  "top_k": 5,
+  "overall": {
+    "examples": 100000,
+    "top1_accuracy": 0.61417,
+    "topk_accuracy": 0.89613,
+    "raw_top1_illegal_rate": 0.99956,
+    "unknown_labels": 0,
+    "no_known_legal_actions": 0,
+    "unknown_legal_actions": 0,
+    "examples_with_unknown_legal_actions": 0,
+    "unknown_legal_action_rate": 0.0
+  },
+  "by_action_type": {
+    "ANKAN": {
+      "examples": 86,
+      "top1_accuracy": 1.0,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "CHI": {
+      "examples": 1573,
+      "top1_accuracy": 0.8970120788302607,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "DAIMINKAN": {
+      "examples": 12,
+      "top1_accuracy": 1.0,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "DISCARD": {
+      "examples": 93030,
+      "top1_accuracy": 0.5874986563474148,
+      "topk_accuracy": 0.8883478447812534,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "KAKAN": {
+      "examples": 48,
+      "top1_accuracy": 1.0,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "PON": {
+      "examples": 2175,
+      "top1_accuracy": 0.9903448275862069,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "RIICHI": {
+      "examples": 1418,
+      "top1_accuracy": 0.9823695345557123,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "RON": {
+      "examples": 1001,
+      "top1_accuracy": 1.0,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 0.9560439560439561,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    },
+    "TSUMO": {
+      "examples": 657,
+      "top1_accuracy": 1.0,
+      "topk_accuracy": 1.0,
+      "raw_top1_illegal_rate": 1.0,
+      "unknown_labels": 0,
+      "no_known_legal_actions": 0,
+      "unknown_legal_actions": 0,
+      "examples_with_unknown_legal_actions": 0,
+      "unknown_legal_action_rate": 0.0
+    }
+  },
+  "notes": [
+    "top1/topk son metricas de imitacion, no de fuerza real.",
+    "Bad-discard metrics are diagnostic; high expert red-five rate may be normal in some datasets.",
+    "Pair-break counts discards where the tile still appears at least twice in the current hand."
+  ],
+  "discard_metrics": {
+    "discard_examples": 93030,
+    "discard_match_rate": 0.6013329033645061,
+    "model_red_five_discard_rate": 0.004256691389874234,
+    "expert_red_five_discard_rate": 0.006943996560249382,
+    "model_honor_discard_rate": 0.3966999892507793,
+    "model_terminal_discard_rate": 0.6624852198215629,
+    "model_pair_break_rate": 0.06760184886595721,
+    "model_shanten_regression_rate": 0.07524454477050414,
+    "expert_shanten_regression_rate": 0.0007309470063420402
+  }
+}

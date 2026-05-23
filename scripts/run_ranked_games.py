@@ -27,6 +27,7 @@ from typing import Any
 
 import websockets
 
+from mahjong_ai.agents.stats import get_agent_stats
 from mahjong_ai.bot_runner import _build_serving_agent, _select_response
 from mahjong_ai.config import authorization_headers, endpoint_from_env, load_config
 
@@ -135,6 +136,7 @@ async def _async_main(args: argparse.Namespace) -> int:
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     debug_log: list[dict[str, Any]] = []
+    agent_stats = get_agent_stats(agent)
 
     with args.output.open("w", encoding="utf-8") as out:
         if args.reuse_connection:
@@ -148,11 +150,14 @@ async def _async_main(args: argparse.Namespace) -> int:
             )
             for idx, row in enumerate(rows, start=1):
                 record = {"game_index": idx, **row}
+                if agent_stats is not None:
+                    record["agent_stats"] = agent_stats.to_mapping()
                 out.write(json.dumps(record, ensure_ascii=False) + "\n")
                 if args.verbose:
                     print(f"partida {idx}/{args.games}: actions={row['actions']} t={row['duration_s']}s", flush=True)
         else:
             for idx in range(1, args.games + 1):
+                stats_before = agent_stats.copy() if agent_stats is not None else None
                 try:
                     row = await _play_until_end_game(
                         url,
@@ -169,6 +174,8 @@ async def _async_main(args: argparse.Namespace) -> int:
                         "error": repr(exc),
                     }
                 record = {"game_index": idx, **row}
+                if agent_stats is not None and stats_before is not None:
+                    record["agent_stats"] = agent_stats.snapshot_delta(stats_before)
                 out.write(json.dumps(record, ensure_ascii=False) + "\n")
                 out.flush()
                 if args.verbose:

@@ -28,6 +28,7 @@ class SupervisedExample:
     action: Action
     event: dict[str, Any]
     source: Path
+    weight: float = 1.0
 
     def encoded_decision(
         self,
@@ -50,14 +51,20 @@ def iter_supervised_examples(
     *,
     action_types: frozenset[str] | None = None,
     strict: bool = True,
+    example_weighting: bool = False,
 ) -> Iterator[SupervisedExample]:
     """Yield expert decisions from one MJAI file, archive, or directory."""
     for replay_path, events in iter_mjai_replays(path, strict=strict):
+        event_list = list(events)
+        actor_weights = (
+            compute_replay_actor_weights(event_list) if example_weighting else None
+        )
         yield from _iter_replay_examples(
             replay_path,
-            events,
+            event_list,
             action_types=action_types,
             strict=strict,
+            actor_weights=actor_weights,
         )
 
 
@@ -66,6 +73,7 @@ def iter_supervised_examples_from_paths(
     *,
     action_types: frozenset[str] | None = None,
     strict: bool = True,
+    example_weighting: bool = False,
 ) -> Iterator[SupervisedExample]:
     """Yield examples from an explicit list of replay paths."""
     for replay_path in paths:
@@ -73,6 +81,7 @@ def iter_supervised_examples_from_paths(
             replay_path,
             action_types=action_types,
             strict=strict,
+            example_weighting=example_weighting,
         )
 
 
@@ -189,12 +198,31 @@ def _events_from_json(parsed: Any) -> Iterator[dict[str, Any]]:
             yield from _events_from_json(item)
 
 
+def compute_replay_actor_weights(events: Iterable[dict[str, Any]]) -> dict[int, float]:
+    """Higher weight for seats that finished the replay with better final scores."""
+    final_scores: list[int] | None = None
+    for event in events:
+        if event.get("type") == "end_game":
+            scores = event.get("scores")
+            if isinstance(scores, list) and len(scores) == 4:
+                final_scores = [int(score) for score in scores]
+    if final_scores is None:
+        return {seat: 1.0 for seat in range(4)}
+
+    ranked = sorted(range(4), key=lambda seat: final_scores[seat], reverse=True)
+    weights: dict[int, float] = {}
+    for rank, seat in enumerate(ranked):
+        weights[seat] = 1.0 + 0.25 * (3 - rank)
+    return weights
+
+
 def _iter_replay_examples(
     source: Path,
     events: Iterable[dict[str, Any]],
     *,
     action_types: frozenset[str] | None,
     strict: bool,
+    actor_weights: dict[int, float] | None = None,
 ) -> Iterator[SupervisedExample]:
     env = RiichiEnv()
 
@@ -206,11 +234,15 @@ def _iter_replay_examples(
                 if observation is not None and observation.legal_actions():
                     action = observation.select_action_from_mjai(event)
                     if action is not None and _include_action(action, action_types):
+                        weight = 1.0
+                        if actor_weights is not None:
+                            weight = actor_weights.get(actor, 1.0)
                         yield SupervisedExample(
                             observation=observation,
                             action=action,
                             event=event,
                             source=source,
+                            weight=weight,
                         )
             except Exception:
                 if strict:
